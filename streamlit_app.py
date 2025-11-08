@@ -1,9 +1,10 @@
-# streamlit_app.py
-
 import streamlit as st
 import pandas as pd
 import datetime
+import time
+
 from pytrends.request import TrendReq
+from pytrends.exceptions import TooManyRequestsError
 
 # ------------- CONFIG & NICHE SETUP --------------
 st.set_page_config(page_title="Global Trend Dashboard", layout='wide')
@@ -20,14 +21,26 @@ def get_google_trends(niche_list, geo=''):
     pytrends = TrendReq(hl='en-US', tz=360)
     trend_data = []
     for topic in niche_list:
-        pytrends.build_payload([topic], cat=0, timeframe='now 7-d', geo=geo)
-        trends = pytrends.interest_over_time()
-        if not trends.empty:
-            for date, row in trends.iterrows():
+        try:
+            pytrends.build_payload([topic], cat=0, timeframe='now 7-d', geo=geo)
+            time.sleep(2)  # Helps avoid rate limits
+            trends = pytrends.interest_over_time()
+            if not trends.empty:
+                for date, row in trends.iterrows():
+                    trend_data.append({
+                        'date': date,
+                        'niche': topic,
+                        'trend_score': row[topic]
+                    })
+        except TooManyRequestsError:
+            # If rate limited, switch to sample data
+            st.warning(f"Google Trends quota reached for {topic}. Showing sample data instead.")
+            now = pd.Timestamp.now()
+            for days_ago in range(7, 0, -1):
                 trend_data.append({
-                    'date': date,
+                    'date': now - pd.Timedelta(days=days_ago),
                     'niche': topic,
-                    'trend_score': row[topic]
+                    'trend_score': 30 + (days_ago * 3 if topic.lower().startswith("saas") else days_ago * 2)
                 })
     return pd.DataFrame(trend_data)
 
